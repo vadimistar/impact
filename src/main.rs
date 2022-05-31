@@ -1,8 +1,14 @@
-use std::{collections::HashMap, fs::File};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    path::{Path, PathBuf},
+};
 
-use color_eyre::Result;
+use color_eyre::{eyre, Result};
 use id3::{Tag, TagLike};
 use repl_rs::{Command, Convert, Parameter, Repl, Value};
+
+use path_absolutize::Absolutize;
 
 mod player;
 mod track;
@@ -40,6 +46,11 @@ fn stop(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<Strin
 fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
     let path: String = args["path"].convert()?;
 
+    // TODO: Get the absolute path and check, if there is a track with the same one in the table
+    
+    let path = Path::new(&path);
+    let path = path.absolutize()?;
+
     fn track_data(path: &str) -> Result<TrackData> {
         let tag = Tag::read_from_path(path)?;
 
@@ -52,7 +63,8 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
         })
     }
 
-    let track_data = track_data(&path)?;
+    let path = path.to_str().unwrap();
+    let track_data = track_data(path)?;
 
     ctx.conn.execute(
         "INSERT INTO tracks (path, title, artist, album) VALUES (?1, ?2, ?3, ?4)",
@@ -64,7 +76,7 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
         ],
     )?;
 
-    Ok(Some(format!("Added {} into the player", &path)))
+    Ok(Some(format!("Added {} into the player", path)))
 }
 
 fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
@@ -84,14 +96,14 @@ fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<Strin
     let tracks: Vec<_> = track_iter.map(|data| data.unwrap()).collect();
     for track in tracks {
         println!(
-            "{} ({}) {} - {} ({})",
+            "{} ({:?}) {} - {} ({})",
             track.id,
             track.path,
             track.artist.unwrap_or_else(|| "".to_string()),
             track.title.unwrap_or_else(|| "".to_string()),
             track.album.unwrap_or_else(|| "".to_string()),
         );
-    };
+    }
     Ok(None)
 }
 
