@@ -1,10 +1,6 @@
-use std::{
-    collections::HashMap,
-    fs::File,
-    path::Path,
-};
+use std::{collections::HashMap, fs::File, path::Path};
 
-use color_eyre::Result;
+use color_eyre::{eyre::eyre, Result};
 use id3::{Tag, TagLike};
 use repl_rs::{Command, Convert, Parameter, Repl, Value};
 
@@ -21,11 +17,76 @@ struct Context {
     conn: Connection,
 }
 
-fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let path: String = args["path"].convert()?;
+fn play_file(path: &str, player: &mut Player) -> Result<()> {
     let source = File::open(&path)?;
-    ctx.player.try_play(source)?;
-    Ok(Some(format!("Playing {}", &path)))
+    player.try_play(source)?;
+    Ok(())
+}
+
+fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+    let title: String = args["title"].convert()?;
+    let track_datas = track_datas(&mut ctx.conn)?;
+    let matches: Vec<_> = track_datas
+        .iter()
+        .filter(
+            |TrackData {
+                 id: _,
+                 path: _,
+                 title: title_,
+                 artist: _,
+                 album: _,
+             }| {
+                if let Some(ref title_) = title_ {
+                    title.eq(title_)
+                } else {
+                    false
+                }
+            },
+        )
+        .collect();
+
+    match matches.len() {
+        0 => return Err(eyre!("Unknown track")),
+        1 => {
+            let track_data = matches.get(0).unwrap();
+
+            println!("Playing: {}", track_data);
+            play_file(&track_data.path, &mut ctx.player)?;
+        }
+        _ => {
+            let artist: String = args
+                .get("artist")
+                .ok_or_else(|| {
+                    eyre!(
+                        "Multiple tracks with the given title exist, so artist has to be specified"
+                    )
+                })?
+                .convert()?;
+            let track_data = matches
+                .iter()
+                .find(
+                    |TrackData {
+                         id: _,
+                         path: _,
+                         title: _,
+                         artist: artist_,
+                         album: _,
+                     }| {
+                        if let Some(ref artist_) = artist_ {
+                            artist.eq(artist_)
+                        } else {
+                            false
+                        }
+                    },
+                )
+                .ok_or_else(|| eyre!("Unknown track"))?;
+
+            println!("Playing: {}", track_data);
+            play_file(&track_data.path, &mut ctx.player)?;
+        }
+    }
+
+    Ok(None)
 }
 
 fn resume(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
@@ -78,9 +139,15 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
     }
 
     // We don't store the track, if it is already stored
-    if track_datas(&mut ctx.conn)?.iter().any(|TrackData { id: _, path: stored_path, title: _, artist: _, album: _ }| {
-        stored_path == path
-    }) {
+    if track_datas(&mut ctx.conn)?.iter().any(
+        |TrackData {
+             id: _,
+             path: stored_path,
+             title: _,
+             artist: _,
+             album: _,
+         }| { stored_path == path },
+    ) {
         return Ok(Some("This track is already stored".to_string()));
     }
 
@@ -100,16 +167,18 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
 }
 
 fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    track_datas(&mut ctx.conn)?.into_iter().for_each(|track_data| {
-        println!(
-            "{} ({:?}) {} - {} ({})",
-            track_data.id,
-            track_data.path,
-            track_data.artist.unwrap_or_else(|| "".to_string()),
-            track_data.title.unwrap_or_else(|| "".to_string()),
-            track_data.album.unwrap_or_else(|| "".to_string()),
-        );
-    });
+    track_datas(&mut ctx.conn)?
+        .into_iter()
+        .for_each(|track_data| {
+            println!(
+                "{} ({:?}) {} - {} ({})",
+                track_data.id,
+                track_data.path,
+                track_data.artist.unwrap_or_else(|| "".to_string()),
+                track_data.title.unwrap_or_else(|| "".to_string()),
+                track_data.album.unwrap_or_else(|| "".to_string()),
+            );
+        });
     Ok(None)
 }
 
@@ -137,8 +206,9 @@ fn main() -> Result<()> {
         .use_completion(true)
         .add_command(
             Command::new("play", play)
-                .with_parameter(Parameter::new("path").set_required(true)?)?
-                .with_help("Play the specific file"),
+                .with_parameter(Parameter::new("title").set_required(true)?)?
+                .with_parameter(Parameter::new("artist").set_required(false)?)?
+                .with_help("Play the specific track in the player"),
         )
         .add_command(Command::new("resume", resume).with_help("Resume the current track"))
         .add_command(Command::new("pause", pause).with_help("Pause the current track"))

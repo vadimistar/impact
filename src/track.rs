@@ -2,7 +2,7 @@ use color_eyre::Result;
 use rodio::{Sink, OutputStreamHandle};
 use std::{
     fs::File,
-    io::BufReader,
+    io::BufReader, fmt::Display,
 };
 
 pub struct Track(Sink);
@@ -33,4 +33,20 @@ pub struct TrackData {
     pub title: Option<String>,
     pub artist: Option<String>, 
     pub album: Option<String>,
+}
+
+impl Display for TrackData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(ref title) = self.title {
+            write!(f, "{}", title)?;
+        }
+        write!(f, " - ")?;
+        if let Some(ref artist) = self.artist {
+            write!(f, "{}", artist)?;
+        }
+        if self.title.is_none() && self.artist.is_none() {
+            write!(f, "({})", self.path)?;
+        } 
+        Ok(())
+    }
 }
