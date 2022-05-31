@@ -26,25 +26,21 @@ impl Track {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TrackData {
     pub id: i32,
     pub path: String,
-    pub title: Option<String>,
-    pub artist: Option<String>, 
-    pub album: Option<String>,
+    pub title: String,
+    pub artist: String, 
+    pub album: String,
 }
 
 impl Display for TrackData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(ref title) = self.title {
-            write!(f, "{}", title)?;
-        }
+        write!(f, "{}", self.title)?;
         write!(f, " - ")?;
-        if let Some(ref artist) = self.artist {
-            write!(f, "{}", artist)?;
-        }
-        if self.title.is_none() && self.artist.is_none() {
+        write!(f, "{}", self.artist)?;
+        if self.title.is_empty() && self.artist.is_empty() {
             write!(f, "({})", self.path)?;
         } 
         Ok(())

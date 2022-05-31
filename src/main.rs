@@ -23,11 +23,25 @@ fn play_file(path: &str, player: &mut Player) -> Result<()> {
     Ok(())
 }
 
-fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let title: String = args["title"].convert()?;
-    let track_datas = track_datas(&mut ctx.conn)?;
+fn track_datas(conn: &mut Connection) -> Result<Vec<TrackData>> {
+    let mut stmt = conn.prepare("SELECT id, path, title, artist, album FROM tracks")?;
+    let track_iter = stmt.query_map([], |row| {
+        Ok(TrackData {
+            id: row.get(0)?,
+            path: row.get(1)?,
+            title: row.get(2)?,
+            artist: row.get(3)?,
+            album: row.get(4)?,
+        })
+    })?;
+
+    Ok(track_iter.map(|data| data.unwrap()).collect())
+}
+
+fn track_data(conn: &mut Connection, title: &str, artist: Option<&str>) -> Result<TrackData> {
+    let track_datas = track_datas(conn)?;
     let matches: Vec<_> = track_datas
-        .iter()
+        .into_iter()
         .filter(
             |TrackData {
                  id: _,
@@ -35,57 +49,44 @@ fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String
                  title: title_,
                  artist: _,
                  album: _,
-             }| {
-                if let Some(ref title_) = title_ {
-                    title.eq(title_)
-                } else {
-                    false
-                }
-            },
+             }| { title.eq(title_) },
         )
         .collect();
 
     match matches.len() {
-        0 => return Err(eyre!("Unknown track")),
-        1 => {
-            let track_data = matches.get(0).unwrap();
-
-            println!("Playing: {}", track_data);
-            play_file(&track_data.path, &mut ctx.player)?;
-        }
+        0 => Err(eyre!("Unknown track")),
+        1 => Ok(matches.get(0).unwrap().clone()),
         _ => {
-            let artist: String = args
-                .get("artist")
-                .ok_or_else(|| {
-                    eyre!(
-                        "Multiple tracks with the given title exist, so artist has to be specified"
+            if let Some(ref artist) = artist {
+                return matches
+                    .iter()
+                    .find(
+                        |TrackData {
+                             id: _,
+                             path: _,
+                             title: _,
+                             artist: artist_,
+                             album: _,
+                         }| artist.eq(artist_),
                     )
-                })?
-                .convert()?;
-            let track_data = matches
-                .iter()
-                .find(
-                    |TrackData {
-                         id: _,
-                         path: _,
-                         title: _,
-                         artist: artist_,
-                         album: _,
-                     }| {
-                        if let Some(ref artist_) = artist_ {
-                            artist.eq(artist_)
-                        } else {
-                            false
-                        }
-                    },
-                )
-                .ok_or_else(|| eyre!("Unknown track"))?;
-
-            println!("Playing: {}", track_data);
-            play_file(&track_data.path, &mut ctx.player)?;
+                    .map(|track| track.clone())
+                    .ok_or_else(|| eyre!("Unknown track"));
+            }
+            Err(eyre!(
+                "Multiple tracks with the same title exist, so artist has to be provided"
+            ))
         }
     }
+}
 
+fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+    let title: String = args["title"].convert()?;
+    let artist: Option<String> = args.get("artist").map(|artist| artist.convert().unwrap());
+
+    let track_data = track_data(&mut ctx.conn, &title, artist.as_deref())?;
+
+    println!("Playing: {}", track_data);
+    play_file(&track_data.path, &mut ctx.player)?;
     Ok(None)
 }
 
@@ -104,21 +105,6 @@ fn stop(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<Strin
     Ok(Some("Stopped".to_string()))
 }
 
-fn track_datas(conn: &mut Connection) -> Result<Vec<TrackData>> {
-    let mut stmt = conn.prepare("SELECT id, path, title, artist, album FROM tracks")?;
-    let track_iter = stmt.query_map([], |row| {
-        Ok(TrackData {
-            id: row.get(0)?,
-            path: row.get(1)?,
-            title: row.get(2)?,
-            artist: row.get(3)?,
-            album: row.get(4)?,
-        })
-    })?;
-
-    Ok(track_iter.map(|data| data.unwrap()).collect())
-}
-
 fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
     let path: String = args["path"].convert()?;
 
@@ -132,9 +118,9 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
         Ok(TrackData {
             id: 0,
             path: path.to_string(),
-            title: tag.title().map(|s| s.to_string()),
-            artist: tag.artist().map(|s| s.to_string()),
-            album: tag.album().map(|s| s.to_string()),
+            title: tag.title().unwrap_or_else(|| "").to_string(),
+            artist: tag.artist().unwrap_or_else(|| "").to_string(),
+            album: tag.album().unwrap_or_else(|| "").to_string(),
         })
     }
 
@@ -174,9 +160,9 @@ fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<Strin
                 "{} ({:?}) {} - {} ({})",
                 track_data.id,
                 track_data.path,
-                track_data.artist.unwrap_or_else(|| "".to_string()),
-                track_data.title.unwrap_or_else(|| "".to_string()),
-                track_data.album.unwrap_or_else(|| "".to_string()),
+                track_data.artist,
+                track_data.title,
+                track_data.album,
             );
         });
     Ok(None)
@@ -190,9 +176,9 @@ fn main() -> Result<()> {
         "CREATE TABLE IF NOT EXISTS tracks (
             id      INTEGER PRIMARY KEY,
             path    TEXT NOT NULL,
-            title   TEXT,
-            artist  TEXT,
-            album   TEXT
+            title   TEXT NOT NULL,
+            artist  TEXT NOT NULL,
+            album   TEXT NOT NULL
         )",
         [],
     )?;
