@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs::File,
-};
+use std::{collections::HashMap, fs::File};
 
 use color_eyre::Result;
 use id3::{Tag, TagLike};
@@ -10,7 +7,7 @@ use repl_rs::{Command, Convert, Parameter, Repl, Value};
 mod player;
 mod track;
 pub use player::Player;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use track::TrackData;
 
 struct Context {
@@ -44,8 +41,8 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
     let path: String = args["path"].convert()?;
 
     fn track_data(path: &str) -> Result<TrackData> {
-        let tag = Tag::read_from_path(path)?;    
-    
+        let tag = Tag::read_from_path(path)?;
+
         Ok(TrackData {
             id: 0,
             path: path.to_string(),
@@ -56,17 +53,24 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
     }
 
     let track_data = track_data(&path)?;
-    
+
     ctx.conn.execute(
-        "INSERT INTO tracks (path, title, artist, album) VALUES (?1, ?2, ?3, ?4)", 
-        params![track_data.path, track_data.title, track_data.artist, track_data.album],
+        "INSERT INTO tracks (path, title, artist, album) VALUES (?1, ?2, ?3, ?4)",
+        params![
+            track_data.path,
+            track_data.title,
+            track_data.artist,
+            track_data.album
+        ],
     )?;
 
     Ok(Some(format!("Added {} into the player", &path)))
 }
 
 fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let mut stmt = ctx.conn.prepare("SELECT id, path, title, artist, album FROM tracks")?;
+    let mut stmt = ctx
+        .conn
+        .prepare("SELECT id, path, title, artist, album FROM tracks")?;
     let track_iter = stmt.query_map([], |row| {
         Ok(TrackData {
             id: row.get(0)?,
@@ -78,7 +82,17 @@ fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<Strin
     })?;
 
     let tracks: Vec<_> = track_iter.map(|data| data.unwrap()).collect();
-    Ok(Some(format!("{:?}", tracks)))
+    for track in tracks {
+        println!(
+            "{} ({}) {} - {} ({})",
+            track.id,
+            track.path,
+            track.artist.unwrap_or_else(|| "".to_string()),
+            track.title.unwrap_or_else(|| "".to_string()),
+            track.album.unwrap_or_else(|| "".to_string()),
+        );
+    };
+    Ok(None)
 }
 
 fn main() -> Result<()> {
@@ -86,19 +100,18 @@ fn main() -> Result<()> {
 
     let conn = Connection::open("./tracks.db")?;
     conn.execute(
-        "CREATE TABLE tracks (
+        "CREATE TABLE IF NOT EXISTS tracks (
             id      INTEGER PRIMARY KEY,
             path    TEXT NOT NULL,
             title   TEXT,
             artist  TEXT,
             album   TEXT
-        )", [])?;
+        )",
+        [],
+    )?;
 
     let player = Player::try_new()?;
-    let context = Context {
-        player,
-        conn,
-    };
+    let context = Context { player, conn };
 
     let mut repl = Repl::new(context)
         .with_name("Impact")
@@ -112,9 +125,11 @@ fn main() -> Result<()> {
         .add_command(Command::new("resume", resume).with_help("Resume the current track"))
         .add_command(Command::new("pause", pause).with_help("Pause the current track"))
         .add_command(Command::new("stop", stop).with_help("Stop the current track"))
-        .add_command(Command::new("add", add)
-            .with_parameter(Parameter::new("path").set_required(true)?)?
-            .with_help("Add the specific file into the player"))
+        .add_command(
+            Command::new("add", add)
+                .with_parameter(Parameter::new("path").set_required(true)?)?
+                .with_help("Add the specific file into the player"),
+        )
         .add_command(Command::new("list", list).with_help("List of all added tracks"));
     repl.run()?;
     Ok(())
