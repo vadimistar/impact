@@ -25,3 +25,12 @@ impl Track {
         self.0.stop();
     }
 }
+
+#[derive(Debug)]
+pub struct TrackData {
+    pub id: i32,
+    pub path: String,
+    pub title: Option<String>,
+    pub artist: Option<String>, 
+    pub album: Option<String>,
+}
