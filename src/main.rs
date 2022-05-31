@@ -1,10 +1,10 @@
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    path::{Path, PathBuf},
+    fs::File,
+    path::Path,
 };
 
-use color_eyre::{eyre, Result};
+use color_eyre::Result;
 use id3::{Tag, TagLike};
 use repl_rs::{Command, Convert, Parameter, Repl, Value};
 
@@ -43,13 +43,27 @@ fn stop(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<Strin
     Ok(Some("Stopped".to_string()))
 }
 
+fn track_datas(conn: &mut Connection) -> Result<Vec<TrackData>> {
+    let mut stmt = conn.prepare("SELECT id, path, title, artist, album FROM tracks")?;
+    let track_iter = stmt.query_map([], |row| {
+        Ok(TrackData {
+            id: row.get(0)?,
+            path: row.get(1)?,
+            title: row.get(2)?,
+            artist: row.get(3)?,
+            album: row.get(4)?,
+        })
+    })?;
+
+    Ok(track_iter.map(|data| data.unwrap()).collect())
+}
+
 fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
     let path: String = args["path"].convert()?;
 
-    // TODO: Get the absolute path and check, if there is a track with the same one in the table
-    
     let path = Path::new(&path);
     let path = path.absolutize()?;
+    let path = path.to_str().unwrap();
 
     fn track_data(path: &str) -> Result<TrackData> {
         let tag = Tag::read_from_path(path)?;
@@ -63,7 +77,13 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
         })
     }
 
-    let path = path.to_str().unwrap();
+    // We don't store the track, if it is already stored
+    if track_datas(&mut ctx.conn)?.iter().any(|TrackData { id: _, path: stored_path, title: _, artist: _, album: _ }| {
+        stored_path == path
+    }) {
+        return Ok(Some("This track is already stored".to_string()));
+    }
+
     let track_data = track_data(path)?;
 
     ctx.conn.execute(
@@ -80,30 +100,16 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
 }
 
 fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let mut stmt = ctx
-        .conn
-        .prepare("SELECT id, path, title, artist, album FROM tracks")?;
-    let track_iter = stmt.query_map([], |row| {
-        Ok(TrackData {
-            id: row.get(0)?,
-            path: row.get(1)?,
-            title: row.get(2)?,
-            artist: row.get(3)?,
-            album: row.get(4)?,
-        })
-    })?;
-
-    let tracks: Vec<_> = track_iter.map(|data| data.unwrap()).collect();
-    for track in tracks {
+    track_datas(&mut ctx.conn)?.into_iter().for_each(|track_data| {
         println!(
             "{} ({:?}) {} - {} ({})",
-            track.id,
-            track.path,
-            track.artist.unwrap_or_else(|| "".to_string()),
-            track.title.unwrap_or_else(|| "".to_string()),
-            track.album.unwrap_or_else(|| "".to_string()),
+            track_data.id,
+            track_data.path,
+            track_data.artist.unwrap_or_else(|| "".to_string()),
+            track_data.title.unwrap_or_else(|| "".to_string()),
+            track_data.album.unwrap_or_else(|| "".to_string()),
         );
-    }
+    });
     Ok(None)
 }
 

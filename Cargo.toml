@@ -12,3 +12,4 @@ rodio = "0.15.0"
 repl-rs = "0.2.6"
 rusqlite = { version = "0.27.0", features = ["bundled"] }
 id3 = "1.1.0"
+path-absolutize = "3.0.13"
