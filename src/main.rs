@@ -38,52 +38,43 @@ fn track_datas(conn: &mut Connection) -> Result<Vec<TrackData>> {
     Ok(track_iter.map(|data| data.unwrap()).collect())
 }
 
-fn track_data(conn: &mut Connection, title: &str, artist: Option<&str>) -> Result<TrackData> {
+/// Second argument may be only title: 'Title', artist and title: 'Artist - Title' or
+/// file path: './test.mp3'
+fn track_data(conn: &mut Connection, id: &str) -> Result<TrackData> {
     let track_datas = track_datas(conn)?;
-    let matches: Vec<_> = track_datas
-        .into_iter()
-        .filter(
-            |TrackData {
-                 id: _,
-                 path: _,
-                 title: title_,
-                 artist: _,
-                 album: _,
-             }| { title.eq(title_) },
-        )
-        .collect();
 
-    match matches.len() {
-        0 => Err(eyre!("Unknown track")),
-        1 => Ok(matches.get(0).unwrap().clone()),
-        _ => {
-            if let Some(ref artist) = artist {
-                return matches
-                    .iter()
-                    .find(
-                        |TrackData {
-                             id: _,
-                             path: _,
-                             title: _,
-                             artist: artist_,
-                             album: _,
-                         }| artist.eq(artist_),
-                    )
-                    .map(|track| track.clone())
-                    .ok_or_else(|| eyre!("Unknown track"));
-            }
-            Err(eyre!(
-                "Multiple tracks with the same title exist, so artist has to be provided"
-            ))
+    let path = Path::new(id);
+    if path.exists() {
+        let path = path.absolutize().unwrap();
+        let path = path.to_str().unwrap();
+        return Ok(track_datas
+            .into_iter()
+            .find(|track_data| path.eq(&track_data.path))
+            .ok_or_else(|| eyre!("Unknown track"))?);
+    }
+
+    if id.contains('-') {
+        if let Some((artist, title)) = id.split_once('-') {
+            let artist = artist.trim();
+            let title = title.trim();
+
+            return Ok(track_datas
+                .into_iter()
+                .find(|track_data| artist.eq(&track_data.artist) && title.eq(&track_data.title))
+                .ok_or_else(|| eyre!("Unknown track"))?);
         }
     }
+
+    let title = id.trim();
+    Ok(track_datas
+        .into_iter()
+        .find(|track_data| title.eq(&track_data.title))
+        .ok_or_else(|| eyre!("Unknown track"))?)
 }
 
 fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let title: String = args["title"].convert()?;
-    let artist: Option<String> = args.get("artist").map(|artist| artist.convert().unwrap());
-
-    let track_data = track_data(&mut ctx.conn, &title, artist.as_deref())?;
+    let id: String = args["track"].convert()?;
+    let track_data = track_data(&mut ctx.conn, &id)?;
 
     println!("Playing: {}", track_data);
     play_file(&track_data.path, &mut ctx.player)?;
@@ -192,9 +183,8 @@ fn main() -> Result<()> {
         .use_completion(true)
         .add_command(
             Command::new("play", play)
-                .with_parameter(Parameter::new("title").set_required(true)?)?
-                .with_parameter(Parameter::new("artist").set_required(false)?)?
-                .with_help("Play the specific track in the player"),
+                .with_parameter(Parameter::new("track").set_required(true)?)?
+                .with_help("Play the specific track in the player (title, title & author or file path have to be provided)"),
         )
         .add_command(Command::new("resume", resume).with_help("Resume the current track"))
         .add_command(Command::new("pause", pause).with_help("Pause the current track"))
