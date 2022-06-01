@@ -48,9 +48,8 @@ fn track_data(conn: &mut Connection, id: &str) -> Result<TrackData> {
         f: impl FnMut(&&TrackData) -> bool,
     ) -> Result<TrackData> {
         track_datas
-            .into_iter()
-            .find(f)
-            .map(|track_data| track_data.clone())
+            .iter()
+            .find(f).cloned()
             .ok_or_else(|| eyre!("Unknown track"))
     }
 
@@ -119,9 +118,9 @@ mod commands {
             Ok(TrackData {
                 id: 0,
                 path: path.to_string(),
-                title: tag.title().unwrap_or_else(|| "").to_string(),
-                artist: tag.artist().unwrap_or_else(|| "").to_string(),
-                album: tag.album().unwrap_or_else(|| "").to_string(),
+                title: tag.title().unwrap_or("").to_string(),
+                artist: tag.artist().unwrap_or("").to_string(),
+                album: tag.album().unwrap_or("").to_string(),
             })
         }
 
