@@ -1,9 +1,6 @@
 use color_eyre::Result;
-use rodio::{Sink, OutputStreamHandle};
-use std::{
-    fs::File,
-    io::BufReader, fmt::Display,
-};
+use rodio::{OutputStreamHandle, Sink};
+use std::{fmt::Display, fs::File, io::BufReader};
 
 pub struct Track(Sink);
 
@@ -31,7 +28,7 @@ pub struct TrackData {
     pub id: i32,
     pub path: String,
     pub title: String,
-    pub artist: String, 
+    pub artist: String,
     pub album: String,
 }
 
@@ -42,7 +39,7 @@ impl Display for TrackData {
         write!(f, "{}", self.title)?;
         if self.title.is_empty() && self.artist.is_empty() {
             write!(f, "({})", self.path)?;
-        } 
+        }
         Ok(())
     }
 }

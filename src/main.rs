@@ -38,38 +38,45 @@ fn track_datas(conn: &mut Connection) -> Result<Vec<TrackData>> {
     Ok(track_iter.map(|data| data.unwrap()).collect())
 }
 
-/// Second argument may be only title: 'Title', artist and title: 'Artist - Title' or
+/// Second argument has to be id: 13, title: 'Title', artist and title: 'Artist - Title' or
 /// file path: './test.mp3'
 fn track_data(conn: &mut Connection, id: &str) -> Result<TrackData> {
     let track_datas = track_datas(conn)?;
+
+    fn find_track(
+        track_datas: &[TrackData],
+        f: impl FnMut(&&TrackData) -> bool,
+    ) -> Result<TrackData> {
+        track_datas
+            .into_iter()
+            .find(f)
+            .map(|track_data| track_data.clone())
+            .ok_or_else(|| eyre!("Unknown track"))
+    }
+
+    if let Ok(id) = id.parse::<i32>() {
+        return find_track(&track_datas, |track_data| id.eq(&track_data.id));
+    }
 
     let path = Path::new(id);
     if path.exists() {
         let path = path.absolutize().unwrap();
         let path = path.to_str().unwrap();
-        return Ok(track_datas
-            .into_iter()
-            .find(|track_data| path.eq(&track_data.path))
-            .ok_or_else(|| eyre!("Unknown track"))?);
+        return find_track(&track_datas, |track_data| path.eq(&track_data.path));
     }
 
     if id.contains('-') {
         if let Some((artist, title)) = id.split_once('-') {
             let artist = artist.trim();
             let title = title.trim();
-
-            return Ok(track_datas
-                .into_iter()
-                .find(|track_data| artist.eq(&track_data.artist) && title.eq(&track_data.title))
-                .ok_or_else(|| eyre!("Unknown track"))?);
+            return find_track(&track_datas, |track_data| {
+                artist.eq(&track_data.artist) && title.eq(&track_data.title)
+            });
         }
     }
 
     let title = id.trim();
-    Ok(track_datas
-        .into_iter()
-        .find(|track_data| title.eq(&track_data.title))
-        .ok_or_else(|| eyre!("Unknown track"))?)
+    find_track(&track_datas, |track_data| title.eq(&track_data.title))
 }
 
 fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
@@ -194,7 +201,7 @@ fn main() -> Result<()> {
         .add_command(
             Command::new("play", play)
                 .with_parameter(Parameter::new("track").set_required(true)?)?
-                .with_help("Play the specific track in the player (title, title & author or file path have to be provided)"),
+                .with_help("Play the specific track in the player (title, title & author or file path have to be provided)")
         )
         .add_command(Command::new("resume", resume).with_help("Resume the current track"))
         .add_command(Command::new("pause", pause).with_help("Pause the current track"))

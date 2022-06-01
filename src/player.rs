@@ -1,5 +1,5 @@
-use std::fs::File;
 use color_eyre::Result;
+use std::fs::File;
 
 use rodio::{OutputStream, OutputStreamHandle};
 
@@ -7,7 +7,7 @@ use crate::track::Track;
 
 pub struct Player {
     #[allow(unused)] // TODO: Do something with this
-                     // Right now it can't be deleted, as track won't gonna play without it
+    // Right now it can't be deleted, as track won't gonna play without it
     stream: OutputStream,
     stream_handle: OutputStreamHandle,
     track: Option<Track>,
