@@ -12,7 +12,7 @@ pub use player::Player;
 use rusqlite::{params, Connection};
 use track::TrackData;
 
-struct Context {
+pub struct Context {
     player: Player,
     conn: Connection,
 }
