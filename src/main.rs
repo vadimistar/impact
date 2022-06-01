@@ -143,6 +143,16 @@ fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>
     Ok(Some(format!("Added {} into the player", path)))
 }
 
+fn remove(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+    let id: String = args["track"].convert()?;
+    let track_data = track_data(&mut ctx.conn, &id)?;
+
+    ctx.conn
+        .execute("DELETE FROM tracks WHERE id = ?1", params![track_data.id])?;
+
+    Ok(Some(format!("Removed: {}", track_data)))
+}
+
 fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
     track_datas(&mut ctx.conn)?
         .into_iter()
@@ -193,6 +203,11 @@ fn main() -> Result<()> {
             Command::new("add", add)
                 .with_parameter(Parameter::new("path").set_required(true)?)?
                 .with_help("Add the specific file into the player"),
+        )
+        .add_command(
+            Command::new("remove", remove)
+                .with_parameter(Parameter::new("track").set_required(true)?)?
+                .with_help("Remove the specific track from the player (title, title & author or file path have to be provided)"),
         )
         .add_command(Command::new("list", list).with_help("List of all added tracks"));
     repl.run()?;
