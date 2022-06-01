@@ -201,7 +201,7 @@ fn main() -> Result<()> {
         .add_command(
             Command::new("play", play)
                 .with_parameter(Parameter::new("track").set_required(true)?)?
-                .with_help("Play the specific track in the player (title, title & author or file path have to be provided)")
+                .with_help("Play the specific track in the player (id, title, title & author or file path have to be provided)")
         )
         .add_command(Command::new("resume", resume).with_help("Resume the current track"))
         .add_command(Command::new("pause", pause).with_help("Pause the current track"))
@@ -214,7 +214,7 @@ fn main() -> Result<()> {
         .add_command(
             Command::new("remove", remove)
                 .with_parameter(Parameter::new("track").set_required(true)?)?
-                .with_help("Remove the specific track from the player (title, title & author or file path have to be provided)"),
+                .with_help("Remove the specific track from the player (id, title, title & author or file path have to be provided)"),
         )
         .add_command(Command::new("list", list).with_help("List of all added tracks"));
     repl.run()?;
