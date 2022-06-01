@@ -37,9 +37,9 @@ pub struct TrackData {
 
 impl Display for TrackData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.title)?;
-        write!(f, " - ")?;
         write!(f, "{}", self.artist)?;
+        write!(f, " - ")?;
+        write!(f, "{}", self.title)?;
         if self.title.is_empty() && self.artist.is_empty() {
             write!(f, "({})", self.path)?;
         } 
