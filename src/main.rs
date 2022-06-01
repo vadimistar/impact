@@ -79,101 +79,105 @@ fn track_data(conn: &mut Connection, id: &str) -> Result<TrackData> {
     find_track(&track_datas, |track_data| title.eq(&track_data.title))
 }
 
-fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let id: String = args["track"].convert()?;
-    let track_data = track_data(&mut ctx.conn, &id)?;
+mod commands {
+    use super::*;
 
-    println!("Playing: {}", track_data);
-    play_file(&track_data.path, &mut ctx.player)?;
-    Ok(None)
-}
+    pub fn play(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        let id: String = args["track"].convert()?;
+        let track_data = track_data(&mut ctx.conn, &id)?;
 
-fn resume(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    ctx.player.resume();
-    Ok(Some("Resumed".to_string()))
-}
-
-fn pause(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    ctx.player.pause();
-    Ok(Some("Paused".to_string()))
-}
-
-fn stop(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    ctx.player.stop();
-    Ok(Some("Stopped".to_string()))
-}
-
-fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let path: String = args["path"].convert()?;
-
-    let path = Path::new(&path);
-    let path = path.absolutize()?;
-    let path = path.to_str().unwrap();
-
-    fn track_data(path: &str) -> Result<TrackData> {
-        let tag = Tag::read_from_path(path)?;
-
-        Ok(TrackData {
-            id: 0,
-            path: path.to_string(),
-            title: tag.title().unwrap_or_else(|| "").to_string(),
-            artist: tag.artist().unwrap_or_else(|| "").to_string(),
-            album: tag.album().unwrap_or_else(|| "").to_string(),
-        })
+        println!("Playing: {}", track_data);
+        play_file(&track_data.path, &mut ctx.player)?;
+        Ok(None)
     }
 
-    // We don't store the track, if it is already stored
-    if track_datas(&mut ctx.conn)?.iter().any(
-        |TrackData {
-             id: _,
-             path: stored_path,
-             title: _,
-             artist: _,
-             album: _,
-         }| { stored_path == path },
-    ) {
-        return Ok(Some("This track is already stored".to_string()));
+    pub fn resume(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        ctx.player.resume();
+        Ok(Some("Resumed".to_string()))
     }
 
-    let track_data = track_data(path)?;
+    pub fn pause(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        ctx.player.pause();
+        Ok(Some("Paused".to_string()))
+    }
 
-    ctx.conn.execute(
-        "INSERT INTO tracks (path, title, artist, album) VALUES (?1, ?2, ?3, ?4)",
-        params![
-            track_data.path,
-            track_data.title,
-            track_data.artist,
-            track_data.album
-        ],
-    )?;
+    pub fn stop(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        ctx.player.stop();
+        Ok(Some("Stopped".to_string()))
+    }
 
-    Ok(Some(format!("Added {} into the player", path)))
-}
+    pub fn add(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        let path: String = args["path"].convert()?;
 
-fn remove(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    let id: String = args["track"].convert()?;
-    let track_data = track_data(&mut ctx.conn, &id)?;
+        let path = Path::new(&path);
+        let path = path.absolutize()?;
+        let path = path.to_str().unwrap();
 
-    ctx.conn
-        .execute("DELETE FROM tracks WHERE id = ?1", params![track_data.id])?;
+        fn track_data(path: &str) -> Result<TrackData> {
+            let tag = Tag::read_from_path(path)?;
 
-    Ok(Some(format!("Removed: {}", track_data)))
-}
+            Ok(TrackData {
+                id: 0,
+                path: path.to_string(),
+                title: tag.title().unwrap_or_else(|| "").to_string(),
+                artist: tag.artist().unwrap_or_else(|| "").to_string(),
+                album: tag.album().unwrap_or_else(|| "").to_string(),
+            })
+        }
 
-fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
-    track_datas(&mut ctx.conn)?
-        .into_iter()
-        .for_each(|track_data| {
-            println!(
-                "{} ({:?}) {} - {} ({})",
-                track_data.id,
+        // We don't store the track, if it is already stored
+        if track_datas(&mut ctx.conn)?.iter().any(
+            |TrackData {
+                 id: _,
+                 path: stored_path,
+                 title: _,
+                 artist: _,
+                 album: _,
+             }| { stored_path == path },
+        ) {
+            return Ok(Some("This track is already stored".to_string()));
+        }
+
+        let track_data = track_data(path)?;
+
+        ctx.conn.execute(
+            "INSERT INTO tracks (path, title, artist, album) VALUES (?1, ?2, ?3, ?4)",
+            params![
                 track_data.path,
-                track_data.artist,
                 track_data.title,
-                track_data.album,
-            );
-        });
-    Ok(None)
+                track_data.artist,
+                track_data.album
+            ],
+        )?;
+
+        Ok(Some(format!("Added {} into the player", path)))
+    }
+
+    pub fn remove(args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        let id: String = args["track"].convert()?;
+        let track_data = track_data(&mut ctx.conn, &id)?;
+
+        ctx.conn
+            .execute("DELETE FROM tracks WHERE id = ?1", params![track_data.id])?;
+
+        Ok(Some(format!("Removed: {}", track_data)))
+    }
+
+    pub fn list(_args: HashMap<String, Value>, ctx: &mut Context) -> Result<Option<String>> {
+        track_datas(&mut ctx.conn)?
+            .into_iter()
+            .for_each(|track_data| {
+                println!(
+                    "{} ({:?}) {} - {} ({})",
+                    track_data.id,
+                    track_data.path,
+                    track_data.artist,
+                    track_data.title,
+                    track_data.album,
+                );
+            });
+        Ok(None)
+    }
 }
 
 fn main() -> Result<()> {
@@ -199,24 +203,24 @@ fn main() -> Result<()> {
         .with_description("Small music player")
         .use_completion(true)
         .add_command(
-            Command::new("play", play)
+            Command::new("play", commands::play)
                 .with_parameter(Parameter::new("track").set_required(true)?)?
                 .with_help("Play the specific track in the player (id, title, title & author or file path have to be provided)")
         )
-        .add_command(Command::new("resume", resume).with_help("Resume the current track"))
-        .add_command(Command::new("pause", pause).with_help("Pause the current track"))
-        .add_command(Command::new("stop", stop).with_help("Stop the current track"))
+        .add_command(Command::new("resume", commands::resume).with_help("Resume the current track"))
+        .add_command(Command::new("pause", commands::pause).with_help("Pause the current track"))
+        .add_command(Command::new("stop", commands::stop).with_help("Stop the current track"))
         .add_command(
-            Command::new("add", add)
+            Command::new("add", commands::add)
                 .with_parameter(Parameter::new("path").set_required(true)?)?
                 .with_help("Add the specific file into the player"),
         )
         .add_command(
-            Command::new("remove", remove)
+            Command::new("remove", commands::remove)
                 .with_parameter(Parameter::new("track").set_required(true)?)?
                 .with_help("Remove the specific track from the player (id, title, title & author or file path have to be provided)"),
         )
-        .add_command(Command::new("list", list).with_help("List of all added tracks"));
+        .add_command(Command::new("list", commands::list).with_help("List of all added tracks"));
     repl.run()?;
     Ok(())
 }
